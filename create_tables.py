@@ -8,7 +8,7 @@ def create_tables():
             host="localhost",
             database="fstr_db",
             user="postgres",
-            password="kakashka123"  # замени на свой пароль!
+            password="12345"  # замени на свой пароль!
         )
         cursor = conn.cursor()
 
