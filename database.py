@@ -10,7 +10,7 @@ class DatabaseManager:
         self.db_host = os.getenv('FSTR_DB_HOST', 'localhost')
         self.db_port = os.getenv('FSTR_DB_PORT', '5432')
         self.db_login = os.getenv('FSTR_DB_LOGIN', 'postgres')
-        self.db_password = os.getenv('FSTR_DB_PASS', 'kakashka123')  # замени на свой пароль
+        self.db_password = os.getenv('FSTR_DB_PASS', '12345')  # замени на свой пароль
         self.db_name = 'fstr_db'
 
     def get_connection(self):
