@@ -1,14 +1,19 @@
 import psycopg2
+import os
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения
+load_dotenv()
 
 
 def create_tables():
     try:
         # Подключаемся к базе
         conn = psycopg2.connect(
-            host="localhost",
-            database="fstr_db",
-            user="postgres",
-            password="12345"  # замени на свой пароль!
+            host=os.getenv('FSTR_DB_HOST', 'localhost'),
+            database='fstr_db',
+            user=os.getenv('FSTR_DB_LOGIN', 'postgres'),
+            password=os.getenv('FSTR_DB_PASS', '12345')  # замени на свой пароль!
         )
         cursor = conn.cursor()
 

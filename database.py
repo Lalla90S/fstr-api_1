@@ -2,11 +2,15 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env файла
+load_dotenv()
 
 
 class DatabaseManager:
     def __init__(self):
-        # Получаем данные из переменных окружения (дополнительные баллы!)
+        # Получаем данные из переменных окружения
         self.db_host = os.getenv('FSTR_DB_HOST', 'localhost')
         self.db_port = os.getenv('FSTR_DB_PORT', '5432')
         self.db_login = os.getenv('FSTR_DB_LOGIN', 'postgres')
@@ -92,6 +96,134 @@ class DatabaseManager:
             conn.rollback()
             print(f"Ошибка при добавлении данных: {e}")
             return None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_pass_by_id(self, pass_id):
+        """Получить запись о перевале по ID"""
+        conn = self.get_connection()
+        if not conn:
+            return None
+
+        try:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT p.*, 
+                       json_agg(
+                           json_build_object(
+                               'id', i.id,
+                               'title', i.title,
+                               'data', i.image_data
+                           )
+                       ) as images
+                FROM passes p
+                LEFT JOIN images i ON p.id = i.pass_id
+                WHERE p.id = %s
+                GROUP BY p.id
+            """, (pass_id,))
+
+            result = cursor.fetchone()
+            return dict(result) if result else None
+
+        except Exception as e:
+            print(f"Ошибка при получении записи: {e}")
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_pass_data(self, pass_id, update_data):
+        """Обновить данные перевала (только если статус 'new')"""
+        conn = self.get_connection()
+        if not conn:
+            return False, "Ошибка подключения к базе данных"
+
+        try:
+            cursor = conn.cursor()
+
+            # Проверяем текущий статус записи
+            cursor.execute("SELECT status FROM passes WHERE id = %s", (pass_id,))
+            current_pass = cursor.fetchone()
+
+            if not current_pass:
+                return False, "Запись не найдена"
+
+            if current_pass['status'] != 'new':
+                return False, "Можно редактировать только записи со статусом 'new'"
+
+            # Обновляем только разрешенные поля
+            update_fields = []
+            update_values = []
+
+            allowed_fields = [
+                'beauty_title', 'title', 'other_titles', 'connect', 'add_time',
+                'coord_latitude', 'coord_longitude', 'coord_height',
+                'level_winter', 'level_summer', 'level_autumn', 'level_spring'
+            ]
+
+            for field in allowed_fields:
+                if field in update_data:
+                    update_fields.append(f"{field} = %s")
+                    update_values.append(update_data[field])
+
+            if not update_fields:
+                return False, "Нет полей для обновления"
+
+            update_values.append(pass_id)
+
+            query = f"UPDATE passes SET {', '.join(update_fields)} WHERE id = %s"
+            cursor.execute(query, update_values)
+
+            # Обновляем изображения если они есть
+            if 'images' in update_data:
+                # Удаляем старые изображения
+                cursor.execute("DELETE FROM images WHERE pass_id = %s", (pass_id,))
+
+                # Добавляем новые
+                for image in update_data['images']:
+                    cursor.execute("""
+                        INSERT INTO images (pass_id, image_data, title)
+                        VALUES (%s, %s, %s)
+                    """, (pass_id, image.get('data'), image.get('title')))
+
+            conn.commit()
+            return True, "Запись успешно обновлена"
+
+        except Exception as e:
+            conn.rollback()
+            print(f"Ошибка при обновлении данных: {e}")
+            return False, f"Ошибка при обновлении: {str(e)}"
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_passes_by_email(self, email):
+        """Получить все перевалы по email пользователя"""
+        conn = self.get_connection()
+        if not conn:
+            return []
+
+        try:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT p.id, p.beauty_title, p.title, p.other_titles, 
+                       p.connect, p.add_time, p.status,
+                       p.coord_latitude, p.coord_longitude, p.coord_height,
+                       p.level_winter, p.level_summer, p.level_autumn, p.level_spring
+                FROM passes p
+                WHERE p.user_email = %s
+                ORDER BY p.add_time DESC
+            """, (email,))
+
+            results = cursor.fetchall()
+            return [dict(result) for result in results]
+
+        except Exception as e:
+            print(f"Ошибка при получении записей по email: {e}")
+            return []
         finally:
             cursor.close()
             conn.close()
