@@ -2,6 +2,10 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Загружаем переменные из .env файла
+load_dotenv()
 
 
 class DatabaseManager:
@@ -26,7 +30,7 @@ class DatabaseManager:
             )
             return conn
         except Exception as e:
-            print(f"Ошибка подключения к базе данных: {e}")
+            print(f"Ошибка подключения к базе данных: {str(e)}")
             return None
 
     def submit_pass_data(self, pass_data):
@@ -92,6 +96,97 @@ class DatabaseManager:
             conn.rollback()
             print(f"Ошибка при добавлении данных: {e}")
             return None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_pass_by_id(self, pass_id):
+        """Получить запись о перевале по ID"""
+        conn = self.get_connection()
+        if not conn:
+            return None
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM passes WHERE id = %s", (pass_id,))
+            result = cursor.fetchone()
+            return dict(result) if result else None
+
+        except Exception as e:
+            print(f"Ошибка при получении записи: {e}")
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+
+    def get_passes_by_email(self, email):
+        """Получить все перевалы по email пользователя"""
+        conn = self.get_connection()
+        if not conn:
+            return []
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM passes WHERE user_email = %s", (email,))
+            results = cursor.fetchall()
+            return [dict(result) for result in results]
+
+        except Exception as e:
+            print(f"Ошибка при получении записей по email: {e}")
+            return []
+        finally:
+            cursor.close()
+            conn.close()
+
+    def update_pass_data(self, pass_id, update_data):
+        """Обновить данные перевала (только если статус 'new')"""
+        conn = self.get_connection()
+        if not conn:
+            return False, "Ошибка подключения к базе данных"
+
+        try:
+            cursor = conn.cursor()
+
+            # Проверяем текущий статус записи
+            cursor.execute("SELECT status FROM passes WHERE id = %s", (pass_id,))
+            current_pass = cursor.fetchone()
+
+            if not current_pass:
+                return False, "Запись не найдена"
+
+            if current_pass['status'] != 'new':
+                return False, "Можно редактировать только записи со статусом 'new'"
+
+            # Обновляем только разрешенные поля
+            update_fields = []
+            update_values = []
+
+            allowed_fields = [
+                'beauty_title', 'title', 'other_titles', 'connect', 'add_time',
+                'coord_latitude', 'coord_longitude', 'coord_height',
+                'level_winter', 'level_summer', 'level_autumn', 'level_spring'
+            ]
+
+            for field in allowed_fields:
+                if field in update_data:
+                    update_fields.append(f"{field} = %s")
+                    update_values.append(update_data[field])
+
+            if not update_fields:
+                return False, "Нет полей для обновления"
+
+            update_values.append(pass_id)
+
+            query = f"UPDATE passes SET {', '.join(update_fields)} WHERE id = %s"
+            cursor.execute(query, update_values)
+
+            conn.commit()
+            return True, "Запись успешно обновлена"
+
+        except Exception as e:
+            conn.rollback()
+            print(f"Ошибка при обновлении данных: {e}")
+            return False, f"Ошибка при обновлении: {str(e)}"
         finally:
             cursor.close()
             conn.close()

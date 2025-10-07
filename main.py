@@ -72,7 +72,7 @@ async def submit_data(pass_data: PassData):
             return ResponseModel(status=400, message="Не все координаты заполнены", id=None)
 
         # Преобразуем данные в словарь для базы данных
-        pass_dict = pass_data.dict()
+        pass_dict = pass_data.model_dump()
 
         # Добавляем данные в базу
         pass_id = db.submit_pass_data(pass_dict)
